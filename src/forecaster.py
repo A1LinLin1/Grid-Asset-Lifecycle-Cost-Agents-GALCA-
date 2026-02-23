@@ -3,95 +3,85 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
 import matplotlib.pyplot as plt
-from dotenv import load_dotenv
 import os
 
-# 加载环境变量
-load_dotenv()
-
-class CostForecaster:
-    """成本预测智能体：执行曲线拟合与未来预测"""
+class LCCForecaster:
+    """基于全寿命周期成本 (LCC) 的智能预测引擎"""
     
-    def __init__(self, degree=2):
-        self.model = LinearRegression()
-        self.poly = PolynomialFeatures(degree=degree)
+    def __init__(self):
+        self.linear_model = LinearRegression()
+        self.poly_model = LinearRegression()
+        self.poly_features = PolynomialFeatures(degree=2)
         
-    def fit_and_predict(self, df: pd.DataFrame, target_col: str, periods_to_forecast: int = 4):
-        """
-        df: 包含'日期'和金额的 DataFrame
-        target_col: 需要拟合的列名
-        periods_to_forecast: 预测未来的周期数（如未来4个季度）
-        """
-        # 1. 数据预处理：将日期转为序号（0, 1, 2...）
-        df = df.sort_values('日期').reset_index()
-        X = np.array(df.index).reshape(-1, 1)
-        y = df[target_col].values
+    def preprocess_data(self, df: pd.DataFrame, eq_type: str, target_col: str = '成本(万元)'):
+        """数据预处理：筛选特定设备，并按季度汇总金额"""
+        # 1. 筛选特定设备
+        eq_df = df[df['设备类型'] == eq_type].copy()
+        if eq_df.empty:
+            return None
+            
+        # 2. 确保日期格式正确
+        eq_df['日期'] = pd.to_datetime(eq_df['日期'])
         
-        # 2. 多项式特征转换 (捕捉非线性趋势)
-        X_poly = self.poly.fit_transform(X)
+        # 3. 按季度汇总成本 (降噪，寻找宏观趋势)
+        eq_df['季度'] = eq_df['日期'].dt.to_period('Q')
+        trend_df = eq_df.groupby('季度')[target_col].sum().reset_index()
         
-        # 3. 训练模型
-        self.model.fit(X_poly, y)
-        
-        # 4. 预测未来
-        future_indices = np.arange(len(df), len(df) + periods_to_forecast).reshape(-1, 1)
-        future_indices_poly = self.poly.transform(future_indices)
-        predictions = self.model.predict(future_indices_poly)
-        
-        return predictions
+        return trend_df
 
-    def plot_results(self, df, predictions, target_col):
-        """可视化拟合效果"""
-        plt.rcParams['font.sans-serif'] = ['SimHei'] # 解决中文显示问题
-        plt.figure(figsize=(10, 6))
-        plt.plot(df.index, df[target_col], 'o-', label='历史成本')
+    def fit_and_predict(self, trend_df: pd.DataFrame, eq_type: str, periods_to_forecast: int = 4):
+        """动态路由：根据设备物理特性选择拟合算法"""
+        if trend_df is None or len(trend_df) < 3:
+            return [], "数据不足"
+            
+        X = np.arange(len(trend_df)).reshape(-1, 1)
+        y = trend_df['成本(万元)'].values
         
-        future_x = np.arange(len(df), len(df) + len(predictions))
-        plt.plot(future_x, predictions, 'r--', label='预测趋势')
+        future_X = np.arange(len(trend_df), len(trend_df) + periods_to_forecast).reshape(-1, 1)
         
-        plt.title(f"电网资产成本趋势拟合预测 ({target_col})")
-        plt.xlabel("时间周期 (季度)")
-        plt.ylabel("金额 (万元)")
-        plt.legend()
-        plt.grid(True)
-        plt.show()
+        # --- 核心专家逻辑：动态选择算法 ---
+        if eq_type in ["电缆终端", "隔离开关"]:
+            # 老化设备：使用多项式拟合捕捉加速上升的维护成本
+            X_poly = self.poly_features.fit_transform(X)
+            self.poly_model.fit(X_poly, y)
+            
+            future_X_poly = self.poly_features.transform(future_X)
+            predictions = self.poly_model.predict(future_X_poly)
+            algorithm_used = "二次多项式回归 (老化加速特征)"
+            
+        else:
+            # 耗材设备 (熔断器/避雷器)：使用线性拟合
+            self.linear_model.fit(X, y)
+            predictions = self.linear_model.predict(future_X)
+            algorithm_used = "线性回归 (随机损耗特征)"
+            
+        # 确保预测成本不为负数
+        predictions = np.maximum(predictions, 0)
+        
+        return predictions.tolist(), algorithm_used
 
-    def save_plot(self, df, predictions, target_col, save_path="data/forecast_plot.png"):
-        """后台静默生成拟合图表并保存为图片"""
-        # 设置 Windows 系统中文字体以防乱码
+    def save_plot(self, trend_df, predictions, eq_type, algorithm_used, save_dir="data"):
+        """为每种设备单独生成带有专家说明的拟合图表"""
         plt.rcParams['font.sans-serif'] = ['SimHei'] 
         plt.rcParams['axes.unicode_minus'] = False
         
         plt.figure(figsize=(10, 6))
-        # 绘制历史数据（蓝色实线）
-        plt.plot(df.index, df[target_col], 'o-', label='历史成本', color='#1f77b4')
         
-        # 绘制预测数据（红色虚线）
-        future_x = np.arange(len(df), len(df) + len(predictions))
-        plt.plot(future_x, predictions, 'o--', label='预测趋势', color='#d62728')
+        # 绘制历史数据
+        plt.plot(trend_df.index, trend_df['成本(万元)'], 'o-', label=f'历史实际成本', color='#1f77b4')
         
-        plt.title(f"电网资产成本趋势拟合预测 ({target_col})", fontsize=14)
+        # 绘制预测数据
+        future_x = np.arange(len(trend_df), len(trend_df) + len(predictions))
+        plt.plot(future_x, predictions, 'o--', label=f'未来预测趋势', color='#d62728')
+        
+        plt.title(f"{eq_type} LCC成本趋势预测\n(使用算法: {algorithm_used})", fontsize=14)
         plt.xlabel("时间周期 (季度)", fontsize=12)
-        plt.ylabel("金额 (万元)", fontsize=12)
+        plt.ylabel("汇总成本 (万元)", fontsize=12)
         plt.legend(fontsize=12)
         plt.grid(True, linestyle='--', alpha=0.6)
         
-        # 保存到本地，然后关闭画板释放内存
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, f"forecast_{eq_type}.png")
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
-
-# 测试运行
-if __name__ == "__main__":
-    # 读取之前生成的模拟数据
-    data_path = 'data/maintenance_records.xlsx'
-    if os.path.exists(data_path):
-        test_df = pd.read_excel(data_path)
-        forecaster = CostForecaster(degree=2) # 使用2次多项式拟合曲线
-        
-        forecast_results = forecaster.fit_and_predict(test_df, '支出金额(万元)')
-        print(f"未来四个季度的预测支出为: {forecast_results}")
-        
-        # 如果在本地有图形界面，可以取消注释查看图表
-        # forecaster.plot_results(test_df, forecast_results, '支出金额(万元)')
-        forecaster.save_plot(test_df, forecast_results, '支出金额(万元)')
-        print("请先运行 generate_test_data.py 生成测试数据！")
+        return save_path
