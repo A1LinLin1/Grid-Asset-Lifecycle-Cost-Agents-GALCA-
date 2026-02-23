@@ -56,6 +56,30 @@ class CostForecaster:
         plt.grid(True)
         plt.show()
 
+    def save_plot(self, df, predictions, target_col, save_path="data/forecast_plot.png"):
+        """后台静默生成拟合图表并保存为图片"""
+        # 设置 Windows 系统中文字体以防乱码
+        plt.rcParams['font.sans-serif'] = ['SimHei'] 
+        plt.rcParams['axes.unicode_minus'] = False
+        
+        plt.figure(figsize=(10, 6))
+        # 绘制历史数据（蓝色实线）
+        plt.plot(df.index, df[target_col], 'o-', label='历史成本', color='#1f77b4')
+        
+        # 绘制预测数据（红色虚线）
+        future_x = np.arange(len(df), len(df) + len(predictions))
+        plt.plot(future_x, predictions, 'o--', label='预测趋势', color='#d62728')
+        
+        plt.title(f"电网资产成本趋势拟合预测 ({target_col})", fontsize=14)
+        plt.xlabel("时间周期 (季度)", fontsize=12)
+        plt.ylabel("金额 (万元)", fontsize=12)
+        plt.legend(fontsize=12)
+        plt.grid(True, linestyle='--', alpha=0.6)
+        
+        # 保存到本地，然后关闭画板释放内存
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+
 # 测试运行
 if __name__ == "__main__":
     # 读取之前生成的模拟数据
@@ -69,5 +93,5 @@ if __name__ == "__main__":
         
         # 如果在本地有图形界面，可以取消注释查看图表
         # forecaster.plot_results(test_df, forecast_results, '支出金额(万元)')
-    else:
+        forecaster.save_plot(test_df, forecast_results, '支出金额(万元)')
         print("请先运行 generate_test_data.py 生成测试数据！")
