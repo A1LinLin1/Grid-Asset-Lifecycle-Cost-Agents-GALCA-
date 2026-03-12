@@ -1,6 +1,8 @@
 # ⚡ GALCA (Grid Asset Lifecycle Cost Agents)
 
 **电网资产全生命周期成本多智能体智能分析平台**
+n🌍 **Live Demo 在线体验**: [http://149.129.217.7:8080](http://149.129.217.7:8080)
+
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688)
@@ -76,4 +78,3 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8080
 
 ---
 
-> **💡 运维提示**：如果在 1G~2G 内存的云服务器上部署，强烈建议配置至少 4GB 的 Swap 虚拟内存以防大型文件提取时 OOM。当前 V2.0 架构已完美规避前端打包导致的内存崩溃。
