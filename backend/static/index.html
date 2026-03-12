@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>GALCA | 电网装备LCC分析</title>
+  <!-- 引入 Vue 3, Element Plus, ECharts, Axios CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css" />
+  <script src="https://unpkg.com/element-plus"></script>
+  <script src="https://unpkg.com/@element-plus/icons-vue"></script>
+  <script src="https://unpkg.com/echarts/dist/echarts.min.js"></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <style>
+    body { margin: 0; background-color: #f5f7fa; font-family: Helvetica, Arial, sans-serif; }
+    .header { background-color: #001529; color: white; display: flex; align-items: center; justify-content: space-between; padding: 0 40px; height: 60px;}
+    .logo { font-size: 24px; font-weight: bold; }
+    .subtitle { font-size: 14px; color: #a6adb4; }
+    .card-header { font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <el-container>
+      <el-header class="header">
+        <div class="logo">⚡ GALCA 工业智能体平台</div>
+        <div class="subtitle">电网资产全寿命成本(LCC)多智能体分析系统</div>
+      </el-header>
+      <el-main style="padding: 20px;">
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-card class="box-card">
+              <template #header>
+                <div class="card-header"><span>📤 多模态数据摄取</span></div>
+              </template>
+              <el-upload
+                drag action="/api/v1/upload" multiple
+                :on-success="handleUploadSuccess"
+              >
+                <el-icon class="el-icon--upload"><Upload-Filled /></el-icon>
+                <div class="el-upload__text">拖拽文件到此处，或 <em>点击上传</em></div>
+              </el-upload>
+              <el-alert v-if="taskStatus" :title="taskStatus" type="success" show-icon style="margin-top: 15px;" :closable="false" />
+            </el-card>
+          </el-col>
+          <el-col :span="16">
+            <el-card class="box-card">
+              <template #header>
+                <div class="card-header"><span>📈 LCC 成本拟合曲线</span></div>
+              </template>
+              <div id="lcc-chart" style="height: 350px;"></div>
+            </el-card>
+          </el-col>
+        </el-row>
+        <el-row style="margin-top: 20px;">
+          <el-col :span="24">
+            <el-card>
+              <template #header>
+                <div class="card-header">
+                  <span>🗄️ 智能体提取的结构化台账</span>
+                  <el-button type="primary" size="small" @click="fetchRecords">刷新数据</el-button>
+                </div>
+              </template>
+              <el-table :data="tableData" border stripe>
+                <el-table-column prop="equipment_type" label="设备类型"></el-table-column>
+                <el-table-column prop="equipment_model" label="型号"></el-table-column>
+                <el-table-column prop="cost_category" label="成本类别"></el-table-column>
+                <el-table-column prop="amount" label="金额(万元)"></el-table-column>
+                <el-table-column prop="date" label="发生日期"></el-table-column>
+              </el-table>
+            </el-card>
+          </el-col>
+        </el-row>
+      </el-main>
+    </el-container>
+  </div>
+  <script>
+    const { createApp, ref, onMounted } = Vue;
+    const App = {
+      setup() {
+        const taskStatus = ref('');
+        const tableData = ref([]);
+
+        const handleUploadSuccess = (response) => {
+          taskStatus.value = response.message || '文件已进入后台处理队列！';
+        };
+
+        const fetchRecords = async () => {
+          try {
+            const res = await axios.get('/api/v1/records');
+            tableData.value = res.data;
+          } catch (error) {
+            console.error('获取失败', error);
+          }
+        };
+
+        const initChart = () => {
+          const myChart = echarts.init(document.getElementById('lcc-chart'));
+          myChart.setOption({
+            title: { text: '设备全生命周期预测' }, tooltip: { trigger: 'axis' },
+            xAxis: { type: 'category', data: ['2020','2021','2022','2023','2024','2025','2026'] },
+            yAxis: { type: 'value', name: '成本(万元)' },
+            series: [{ data: [150,230,224,218,135,147,260], type: 'line', smooth: true, areaStyle: { opacity: 0.3 } }]
+          });
+        };
+
+        onMounted(() => { initChart(); fetchRecords(); });
+
+        return { taskStatus, tableData, handleUploadSuccess, fetchRecords };
+      }
+    };
+    const app = createApp(App);
+    app.use(ElementPlus);
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) { app.component(key, component); }
+    app.mount('#app');
+  </script>
+</body>
+</html>
